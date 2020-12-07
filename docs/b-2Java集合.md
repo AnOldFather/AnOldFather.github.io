@@ -2,7 +2,7 @@
 
 ## 2.2 Java集合
 
-> **作者:** 周力铮。
+> **作者:** 小周吃了吗。
 >
 > **说明:**  本文讲述Collection、Map接口下的集合实现类源码说明
 
@@ -144,7 +144,7 @@ public class ArrayList<E> extends AbstractList<E>
 ```
 > **注意:**  JDK11 移除了 `ensureCapacityInternal()` 和 `ensureExplicitCapacity()` 方法
 
-### ensureCapacityInternal() 方法
+#### ensureCapacityInternal() 方法
 ```java
     private void ensureCapacityInternal(int minCapacity) {
         // 如果是第一次扩容
@@ -157,7 +157,7 @@ public class ArrayList<E> extends AbstractList<E>
     }
 ```
 
-### ensureExplicitCapacity() 方法
+#### ensureExplicitCapacity() 方法
 ```java
     private void ensureExplicitCapacity(int minCapacity) {
         //修改次数 +1
@@ -170,7 +170,7 @@ public class ArrayList<E> extends AbstractList<E>
     }
 ```
 
-### grow() 方法 
+#### grow() 方法 
 ```java
     /**
      * 增加容量，以确保它能容纳至少
@@ -205,6 +205,142 @@ public class ArrayList<E> extends AbstractList<E>
             MAX_ARRAY_SIZE;
     }
 ```
+
+### 2.3.2 为什么不能再foreach循环里对元素进行remove/add操作
+
+**阿里巴巴开发手册明确规范**
+
+![集合结构图](../resource/images/alibaba开发手册-Arraylist.jpg)
+
+#### 案例
+
+```java
+//正例
+    List<String> list = new ArrayList<>();
+    list.add("1");
+    list.add("2");
+    
+    Iterator<String> iterator = list.iterator();
+    while (iterator.hasNext()) {
+        String item = iterator.next();
+        if ("2".equals(item)) {
+            iterator.remove();
+        }
+    }
+
+//反例 反例 反例
+
+1    List<String> list = new ArrayList<>();
+2    list.add("1");
+3    list.add("2");
+4     
+5    for (String item : list) {
+6        if ("2".equals(item)) {
+7            list.remove(item);
+8        }
+9    }
+```
+运行反例代码会抛出`ConcurrentModificationException`异常，如果将第6行改成`"1".equals(item)`则运行成功,欸!这是怎么回事呢,我们来一起探究一下。
+
+#### 反编译
+
+我们都知道foreach是一个语法塘,我们反编译看看,结果如下
+```java
+public class com.shsr.zhangpuback.utils.test.Test {
+  public com.shsr.zhangpuback.utils.test.Test();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static void main(java.lang.String[]);
+    Code:
+       0: new           #2                  // class java/util/ArrayList
+       3: dup
+       4: invokespecial #3                  // Method java/util/ArrayList."<init>":()V
+       7: astore_1
+       8: aload_1
+       9: ldc           #4                  // String 1
+      11: invokeinterface #5,  2            // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      16: pop
+      17: aload_1
+      18: ldc           #6                  // String 2
+      20: invokeinterface #5,  2            // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      25: pop
+      26: aload_1
+      27: invokeinterface #7,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      32: astore_2
+      33: aload_2
+      34: invokeinterface #8,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      39: ifeq          72
+      42: aload_2
+      43: invokeinterface #9,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      48: checkcast     #10                 // class java/lang/String
+      51: astore_3
+      52: ldc           #6                  // String 2
+      54: aload_3
+      55: invokevirtual #11                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+      58: ifeq          69
+      61: aload_1
+      62: aload_3
+      63: invokeinterface #12,  2           // InterfaceMethod java/util/List.remove:(Ljava/lang/Object;)Z
+      68: pop
+      69: goto          33
+      72: return
+}
+```
+
+看不懂没关系,我们看27、34、43行后面的注释,他通过`List.iterator`获取到迭代器,通过`next`判断是否有下一个元素,使用`hasNext`获取下个元素，实现遍历操作。
+**注意:** 普通for循环不是这样操作，也就是说普通for循环不会出现这种问题
+
+来看下ArrayList中的iterator()方法
+```java
+    public Iterator<E> iterator() {
+        return new Itr();
+    }
+```
+看一下`Itr`内部类
+```java
+    private class Itr implements Iterator<E> {
+1        int cursor;       // index of next element to return
+2        int lastRet = -1; // index of last element returned; -1 if no such
+         //将 modCount 赋值给 expectedModCount
+3        int expectedModCount = modCount;
+
+4        public boolean hasNext() {
+5            return cursor != size;
+6        }
+
+7        @SuppressWarnings("unchecked")
+8        public E next() {
+9            checkForComodification();
+10            int i = cursor;
+11            if (i >= size)
+12                throw new NoSuchElementException();
+13            Object[] elementData = ArrayList.this.elementData;
+14            if (i >= elementData.length)
+15                throw new ConcurrentModificationException();
+16            cursor = i + 1;
+17            return (E) elementData[lastRet = i];
+18        }
+        //...
+    }
+```
+`cursor`:下一个元素下标 `lastRet`:最后一位元素下标，如果没有则返回-1
+
+我们可以看到`ConcurrentModificationException`异常是从第九行`checkForComodification()`方法中抛出来的
+```java
+    final void checkForComodification() {
+        if (modCount != expectedModCount)
+            throw new ConcurrentModificationException();
+    }
+```
+可以看到modCount与expectedModCount如果不相等就会抛出异常,可以看到ArrayList的add()或者remove()方法,每次对ArrayList做过修改操作，会对modCount修改标志位做出+1的操作。
+这里modCount作为一个快速失败的作用。**什么是快速失败？在并发场景下,迭代器会快速抛出异常,而不是在任意时间点冒着不确定的风险来进行操作，也就是将可能出现的bug前推**。
+在这里,如果其他线程对该集合做出了修改cursor+1,调用next方法时将快速抛出异常。
+
+我们可以用上面反例来举一个例子
+
 
 ### 补充内容:
 - **RandomAccess接口**
