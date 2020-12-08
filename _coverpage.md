@@ -5,4 +5,4 @@
 
 [常用资源]()
 [GitHub](https://github.com/AnOldFather)
-[开始阅读](#docsify-demo)
+[开始阅读](#小周吃了没)
