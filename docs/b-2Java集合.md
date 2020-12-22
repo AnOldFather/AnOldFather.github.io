@@ -244,7 +244,7 @@ public class ArrayList<E> extends AbstractList<E>
 
 #### 反编译
 
-我们都知道foreach是一个语法塘,我们反编译看看,结果如下
+我们都知道foreach是一个语法糖,我们反编译看看,结果如下
 ```java
 public class com.shsr.zhangpuback.utils.test.Test {
   public com.shsr.zhangpuback.utils.test.Test();
