@@ -117,5 +117,4 @@ JDK1.2之后，提供了`WeakReference`类来实现软引用；
 
 ### 4.3.4 Parallel Scavenge 收集器
 
-
 `Parallel Scavenge收集器`因为利用的多个CPU的原理，所以它更加专注吞吐量，如果不在乎`STW`，更专注吞吐量，这是个不错的选择；
